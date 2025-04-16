@@ -1,6 +1,4 @@
 const PREFIX = "&c[&fNSTranslate&c]&r";
-const VERSION = "1.0.1";
-const GITHUB_REPO = "NumberSixDev/NS-Translate";
 const LANGUAGES = {
     "en": "English",
     "es": "Spanish",
@@ -165,13 +163,6 @@ let config = {
         threshold: 0.3,
         showInChat: true,
         excludeCommands: true
-    },
-    updateChecker: {
-        enabled: true,
-        autoCheck: true,
-        lastCheckedTimestamp: 0,
-        checkInterval: 43200000,
-        lastVersion: VERSION
     }
 };
 
@@ -197,17 +188,6 @@ function loadConfig() {
                     config.autoTranslate.showInChat = true;
                     saveConfig();
                 }
-
-                if (!config.updateChecker) {
-                    config.updateChecker = {
-                        enabled: true,
-                        autoCheck: true,
-                        lastCheckedTimestamp: 0,
-                        checkInterval: 43200000,
-                        lastVersion: VERSION
-                    };
-                    saveConfig();
-                }
             }
         } else {
             FileLib.mkdir("NSTranslate");
@@ -226,84 +206,11 @@ function saveConfig() {
     }
 }
 
-function checkForUpdates(showNoUpdates = false) {
-    if (!config.updateChecker.enabled) return;
-    
-    const currentTime = Date.now();
-    
-    if (!showNoUpdates && 
-        config.updateChecker.lastCheckedTimestamp > 0 && 
-        currentTime - config.updateChecker.lastCheckedTimestamp < config.updateChecker.checkInterval) {
-        return;
-    }
-    
-    config.updateChecker.lastCheckedTimestamp = currentTime;
-    saveConfig();
-    
-    ChatLib.chat(`${PREFIX} &fChecking for updates...`);
-    
-    const apiUrl = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
-    
-    makeHttpRequest({
-        url: apiUrl,
-        method: "GET",
-        headers: {
-            "Accept": "application/vnd.github.v3+json",
-            "User-Agent": "NSTranslate-Mod"
-        }
-    }, (error, responseCode, data) => {
-        if (error) {
-            ChatLib.chat(`${PREFIX} &cFailed to check for updates: ${error}`);
-            return;
-        }
-        
-        try {
-            const releaseInfo = JSON.parse(data);
-            const latestVersion = releaseInfo.tag_name.replace(/^v/i, "");
-            
-            config.updateChecker.latestVersion = latestVersion;
-            saveConfig();
-            
-            if (compareVersions(latestVersion, VERSION) > 0) {
-                ChatLib.chat(`${PREFIX} &aAn update is available!`);
-                ChatLib.chat(`${PREFIX} &fCurrent version: &c${VERSION}`);
-                ChatLib.chat(`${PREFIX} &fLatest version: &a${latestVersion}`);
-                
-                const downloadComponent = new TextComponent(`${PREFIX} &eClick here to view the release and download`)
-                    .setHoverValue("&aClick to open in browser")
-                    .setClick("open_url", releaseInfo.html_url);
-                
-                ChatLib.chat(downloadComponent);
-            } else if (showNoUpdates) {
-                ChatLib.chat(`${PREFIX} &aYou're using the latest version (${VERSION})!`);
-            }
-        } catch (e) {
-            ChatLib.chat(`${PREFIX} &cError parsing update information: ${e.toString()}`);
-        }
-    });
-}
-
-function compareVersions(v1, v2) {
-    const v1Parts = v1.split('.').map(Number);
-    const v2Parts = v2.split('.').map(Number);
-    
-    for (let i = 0; i < Math.max(v1Parts.length, v2Parts.length); i++) {
-        const v1Part = v1Parts[i] || 0;
-        const v2Part = v2Parts[i] || 0;
-        
-        if (v1Part > v2Part) return 1;
-        if (v1Part < v2Part) return -1;
-    }
-    
-    return 0;
-}
-
 function init() {
     loadConfig();
     ChatLib.chat(`${PREFIX} &fLoaded! Use &c/translate &fto begin translating.`);
     ChatLib.chat(`${PREFIX} &fUse &c/translate help &ffor more information.`);
     ChatLib.chat(`${PREFIX} &fCreated & Updated by &cNumberSix/LabGeek`);
-    ChatLib.chat(`${PREFIX} &fVersion: &c${VERSION}`);
     ChatLib.chat(new TextComponent(`${PREFIX} &fWe now have a discord! Click to join!`)
     .setHoverValue(`Click to join!`)
     .setClick("open_url", `https://discord.gg/BpVZDwnJUk`));
@@ -311,12 +218,6 @@ function init() {
         ChatLib.chat(`${PREFIX} &aAutomatic chat translation is enabled. Use &c/translate auto toggle &ato disable.`);
     } else {
         ChatLib.chat(`${PREFIX} &fTry &c/translate auto toggle &fto enable automatic chat translation.`);
-    }
-    
-    if (config.updateChecker.autoCheck) {
-        setTimeout(() => {
-            checkForUpdates();
-        }, 3000);
     }
 }
 
@@ -694,8 +595,6 @@ function showHelp() {
     ChatLib.chat(`&c/translate toggle offline &f- Toggle offline/online mode`);
     ChatLib.chat(`&c/translate auto toggle &f- Toggle automatic chat translation`);
     ChatLib.chat(`&c/translate auto lang <code> &f- Set target language for auto-translation`);
-    ChatLib.chat(`&c/translate update check &f- Check for updates`);
-    ChatLib.chat(`&c/translate update toggle &f- Toggle automatic update checking`);
     ChatLib.chat(`&c/translate langs &f- Show available language codes`);
     ChatLib.chat(`&c/translate help &f- Show this help message\n`);
     ChatLib.chat(`&f(Pro tip: You can click on any translation to copy it to your clipboard!)`);
@@ -728,151 +627,121 @@ function testConnectivity() {
         ChatLib.chat(`${PREFIX} &cBasic internet connectivity test failed. Check your connection.`);
     }
     
-TRANSLATION_APIS.forEach((api, index) => {
-    try {
-        const url = new java.net.URL(api.url);
-        const hostname = url.getHost();
-        
-        ChatLib.chat(`${PREFIX} &fTesting API ${index + 1} (${api.name}): ${hostname}...`);
-        
-        new Thread(() => {
-            if (isHostReachable(hostname)) {
-                ChatLib.chat(`${PREFIX} &fSuccess! ${api.name} (${hostname}) is reachable.`);
-            } else {
-                ChatLib.chat(`${PREFIX} &cFailed! Cannot reach ${api.name} (${hostname}).`);
-                ChatLib.chat(`${PREFIX} &cTry using offline mode with &c/translate toggle offline`);
-            }
-        }).start();
-    } catch (e) {
-        ChatLib.chat(`${PREFIX} &cError parsing URL for ${api.name}: ${e.toString()}`);
-    }
-});
-
-try {
-    const githubUrl = new java.net.URL("https://api.github.com");
-    const hostname = githubUrl.getHost();
-    
-    ChatLib.chat(`${PREFIX} &fTesting GitHub API connectivity for updates: ${hostname}...`);
-    
-    new Thread(() => {
-        if (isHostReachable(hostname)) {
-            ChatLib.chat(`${PREFIX} &fSuccess! GitHub API (${hostname}) is reachable.`);
-        } else {
-            ChatLib.chat(`${PREFIX} &cFailed! Cannot reach GitHub API (${hostname}).`);
-            ChatLib.chat(`${PREFIX} &cUpdate checking may not work properly.`);
+    TRANSLATION_APIS.forEach((api, index) => {
+        try {
+            const url = new java.net.URL(api.url);
+            const hostname = url.getHost();
+            
+            ChatLib.chat(`${PREFIX} &fTesting API ${index + 1} (${api.name}): ${hostname}...`);
+            
+            new Thread(() => {
+                if (isHostReachable(hostname)) {
+                    ChatLib.chat(`${PREFIX} &fSuccess! ${api.name} (${hostname}) is reachable.`);
+                } else {
+                    ChatLib.chat(`${PREFIX} &cFailed! Cannot reach ${api.name} (${hostname}).`);
+                    ChatLib.chat(`${PREFIX} &cTry using offline mode with &c/translate toggle offline`);
+                }
+            }).start();
+        } catch (e) {
+            ChatLib.chat(`${PREFIX} &cError parsing URL for ${api.name}: ${e.toString()}`);
         }
-    }).start();
-} catch (e) {
-    ChatLib.chat(`${PREFIX} &cError parsing URL for GitHub API: ${e.toString()}`);
-}
+    });
 }
 
 register("command", (...args) => {
-if (args.length === 0 || args[0] === "help") {
-    showHelp();
-    return;
-}
-
-if (args[0] === "langs") {
-    showLanguages();
-    return;
-}
-
-if (args[0] === "toggle" && args[1] === "original") {
-    config.showOriginal = !config.showOriginal;
-    ChatLib.chat(`${PREFIX} ${config.showOriginal ? "&fShowing" : "&cHiding"} original text.`);
-    saveConfig();
-    return;
-}
-
-if (args[0] === "toggle" && args[1] === "offline") {
-    config.offlineMode = !config.offlineMode;
-    ChatLib.chat(`${PREFIX} ${config.offlineMode ? "&cOffline" : "&fOnline"} mode enabled.`);
-    if (config.offlineMode) {
-        ChatLib.chat(`${PREFIX} &fNote: Offline mode has limited vocabulary.`);
-    }
-    saveConfig();
-    return;
-}
-
-if (args[0] === "auto" && args[1] === "toggle") {
-    config.autoTranslate.enabled = !config.autoTranslate.enabled;
-    ChatLib.chat(`${PREFIX} &fAutomatic chat translation: ${config.autoTranslate.enabled ? "&aEnabled" : "&cDisabled"}`);
-    if (config.autoTranslate.enabled) {
-        ChatLib.chat(`${PREFIX} &fTranslating to: &c${config.autoTranslate.targetLang} &f(${LANGUAGES[config.autoTranslate.targetLang] || config.autoTranslate.targetLang})`);
-        ChatLib.chat(`${PREFIX} &fUse &c/translate auto lang <code> &fto change target language.`);
-    }
-    saveConfig();
-    return;
-}
-
-if (args[0] === "auto" && args[1] === "lang" && args[2]) {
-    const langCode = args[2].toLowerCase();
-    if (!LANGUAGES[langCode]) {
-        ChatLib.chat(`${PREFIX} &cUnknown language code. Use &c/translate langs &cto see available languages.`);
+    if (args.length === 0 || args[0] === "help") {
+        showHelp();
         return;
     }
     
-    config.autoTranslate.targetLang = langCode;
-    ChatLib.chat(`${PREFIX} &fSet auto-translation target language to: &c${langCode} &f(${LANGUAGES[langCode]})`);
-    saveConfig();
-    return;
-}
-
-if (args[0] === "update" && args[1] === "check") {
-    checkForUpdates(true);
-    return;
-}
-
-if (args[0] === "update" && args[1] === "toggle") {
-    config.updateChecker.autoCheck = !config.updateChecker.autoCheck;
-    ChatLib.chat(`${PREFIX} &fAutomatic update checking: ${config.updateChecker.autoCheck ? "&aEnabled" : "&cDisabled"}`);
-    saveConfig();
-    return;
-}
-
-if (args[0] === "set" && args[1] === "default" && args[2] && args[3]) {
-    config.defaultFrom = args[2];
-    config.defaultTo = args[3];
-    ChatLib.chat(`${PREFIX} &fDefault languages set to: &c${args[2]} &f→ &c${args[3]}`);
-    saveConfig();
-    return;
-}
-
-if (args[0] === "last" && args.length > 1) {
-    if (!config.lastUsed.from || !config.lastUsed.to) {
-        ChatLib.chat(`${PREFIX} &cNo previous translation found. Please use full syntax.`);
+    if (args[0] === "langs") {
+        showLanguages();
         return;
     }
-    const text = args.slice(1).join(" ");
-    const result = translateText(config.lastUsed.from, config.lastUsed.to, text);
-    if (result.success && !result.pending && result.component) {
-        ChatLib.chat(result.component);
+    
+    if (args[0] === "toggle" && args[1] === "original") {
+        config.showOriginal = !config.showOriginal;
+        ChatLib.chat(`${PREFIX} ${config.showOriginal ? "&fShowing" : "&cHiding"} original text.`);
+        saveConfig();
+        return;
     }
-    return;
-}
-
-if (args.length >= 1 && !LANGUAGES[args[0]] && args[0].length !== 2) {
-    const text = args.join(" ");
-    const result = translateText(config.defaultFrom, config.defaultTo, text);
-    if (result.success && !result.pending && result.component) {
-        ChatLib.chat(result.component);
+    
+    if (args[0] === "toggle" && args[1] === "offline") {
+        config.offlineMode = !config.offlineMode;
+        ChatLib.chat(`${PREFIX} ${config.offlineMode ? "&cOffline" : "&fOnline"} mode enabled.`);
+        if (config.offlineMode) {
+            ChatLib.chat(`${PREFIX} &fNote: Offline mode has limited vocabulary.`);
+        }
+        saveConfig();
+        return;
     }
-    return;
-}
-
-if (args.length >= 3) {
-    const from = args[0];
-    const to = args[1];
-    const text = args.slice(2).join(" ");
-    const result = translateText(from, to, text);
-    if (result.success && !result.pending && result.component) {
-        ChatLib.chat(result.component);
+    
+    if (args[0] === "auto" && args[1] === "toggle") {
+        config.autoTranslate.enabled = !config.autoTranslate.enabled;
+        ChatLib.chat(`${PREFIX} &fAutomatic chat translation: ${config.autoTranslate.enabled ? "&aEnabled" : "&cDisabled"}`);
+        if (config.autoTranslate.enabled) {
+            ChatLib.chat(`${PREFIX} &fTranslating to: &c${config.autoTranslate.targetLang} &f(${LANGUAGES[config.autoTranslate.targetLang] || config.autoTranslate.targetLang})`);
+            ChatLib.chat(`${PREFIX} &fUse &c/translate auto lang <code> &fto change target language.`);
+        }
+        saveConfig();
+        return;
     }
-    return;
-}
-
-ChatLib.chat(`${PREFIX} &cInvalid syntax. Use &c/translate help &cfor usage information.`);
+    
+    if (args[0] === "auto" && args[1] === "lang" && args[2]) {
+        const langCode = args[2].toLowerCase();
+        if (!LANGUAGES[langCode]) {
+            ChatLib.chat(`${PREFIX} &cUnknown language code. Use &c/translate langs &cto see available languages.`);
+            return;
+        }
+        
+        config.autoTranslate.targetLang = langCode;
+        ChatLib.chat(`${PREFIX} &fSet auto-translation target language to: &c${langCode} &f(${LANGUAGES[langCode]})`);
+        saveConfig();
+        return;
+    }
+    
+    if (args[0] === "set" && args[1] === "default" && args[2] && args[3]) {
+        config.defaultFrom = args[2];
+        config.defaultTo = args[3];
+        ChatLib.chat(`${PREFIX} &fDefault languages set to: &c${args[2]} &f→ &c${args[3]}`);
+        saveConfig();
+        return;
+    }
+    
+    if (args[0] === "last" && args.length > 1) {
+        if (!config.lastUsed.from || !config.lastUsed.to) {
+            ChatLib.chat(`${PREFIX} &cNo previous translation found. Please use full syntax.`);
+            return;
+        }
+        const text = args.slice(1).join(" ");
+        const result = translateText(config.lastUsed.from, config.lastUsed.to, text);
+        if (result.success && !result.pending && result.component) {
+            ChatLib.chat(result.component);
+        }
+        return;
+    }
+    
+    if (args.length >= 1 && !LANGUAGES[args[0]] && args[0].length !== 2) {
+        const text = args.join(" ");
+        const result = translateText(config.defaultFrom, config.defaultTo, text);
+        if (result.success && !result.pending && result.component) {
+            ChatLib.chat(result.component);
+        }
+        return;
+    }
+    
+    if (args.length >= 3) {
+        const from = args[0];
+        const to = args[1];
+        const text = args.slice(2).join(" ");
+        const result = translateText(from, to, text);
+        if (result.success && !result.pending && result.component) {
+            ChatLib.chat(result.component);
+        }
+        return;
+    }
+    
+    ChatLib.chat(`${PREFIX} &cInvalid syntax. Use &c/translate help &cfor usage information.`);
 }).setName("translate").setAliases(["tr", "tl"]);
 
 init();
