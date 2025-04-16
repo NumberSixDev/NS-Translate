@@ -32,6 +32,39 @@ const LANGUAGES = {
     "el": "Greek"
 };
 
+const LANGUAGE_PATTERNS = {
+    "ru": /[А-Яа-яЁё]/g,
+    "zh": /[\u4e00-\u9fff\u3400-\u4dbf]/g,
+    "ja": /[\u3040-\u309f\u30a0-\u30ff]/g,
+    "ko": /[\uac00-\ud7af\u1100-\u11ff]/g,
+    "ar": /[\u0600-\u06ff]/g,
+    "he": /[\u0590-\u05ff]/g,
+    "th": /[\u0e00-\u0e7f]/g,
+    "hi": /[\u0900-\u097f]/g,
+    "bn": /[\u0980-\u09ff]/g,
+    "el": /[\u0370-\u03ff\u1f00-\u1fff]/g,
+    "uk": /[\u0404\u0406\u0407\u0454\u0456\u0457\u0490\u0491\u0404\u0406\u0407\u0454\u0456\u0457\u0490\u0491]/g,
+    "es": /[áéíóúüñ¿¡]/gi,
+    "fr": /[àâäæçéèêëîïôœùûüÿ]/gi,
+    "de": /[äöüß]/gi,
+    "it": /[àèéìíîòóùú]/gi,
+    "pt": /[áàâãçéêíóôõúü]/gi,
+    "tr": /[çğıöşü]/gi,
+    "vi": /[ăâđêôơư]/gi,
+    "pl": /[ąćęłńóśźż]/gi,
+    "nl": /[áéíóúüëïöää]/gi,
+    "sv": /[åäöé]/gi,
+    "no": /[æøåéêèàë]/gi,
+    "fi": /[äöéèüñ]/gi,
+    "da": /[æøåéëêäàö]/gi,
+    "id": /[éèá]/gi,
+    "ms": /[éèá]/gi,
+    "ro": /[ăâîșț]/gi,
+    "hu": /[áéíóöőüű]/gi,
+    "cs": /[áčďéěíňóřšťúůýž]/gi,
+    "en": /\b(the|and|of|to|in|is|that|for|it|with|as|on|be|at|this|by)\b/gi
+}
+
 const OFFLINE_DICTIONARY = {
     "en_es": {
         "hello": "hola",
@@ -84,6 +117,37 @@ const OFFLINE_DICTIONARY = {
         "crear": "craft",
         "minar": "mine",
         "construir": "build"
+    },
+    "ru_en": {
+        "привет": "hello",
+        "здравствуй": "hello",
+        "здравствуйте": "hello (formal)",
+        "пока": "bye",
+        "до свидания": "goodbye",
+        "да": "yes",
+        "нет": "no",
+        "спасибо": "thank you",
+        "пожалуйста": "please/you're welcome",
+        "извините": "sorry/excuse me",
+        "доброе утро": "good morning",
+        "добрый день": "good afternoon",
+        "добрый вечер": "good evening",
+        "спокойной ночи": "good night",
+        "как дела": "how are you",
+        "помогите": "help",
+        "друг": "friend",
+        "вода": "water",
+        "еда": "food",
+        "игрок": "player",
+        "игра": "game",
+        "меч": "sword",
+        "броня": "armor",
+        "алмаз": "diamond",
+        "крипер": "creeper",
+        "крафт": "craft",
+        "добывать": "mine",
+        "строить": "build",
+        "мир": "world/peace"
     }
 };
 
@@ -92,7 +156,14 @@ let config = {
     defaultTo: "es",
     showOriginal: true,
     lastUsed: {},
-    offlineMode: false
+    offlineMode: false,
+    autoTranslate: {
+        enabled: false,
+        targetLang: "en",
+        threshold: 0.3,
+        showInChat: true,
+        excludeCommands: true
+    }
 };
 
 function loadConfig() {
@@ -101,6 +172,22 @@ function loadConfig() {
             const savedConfig = FileLib.read("NSTranslate", "config.json");
             if (savedConfig) {
                 config = JSON.parse(savedConfig);
+                
+                if (!config.autoTranslate) {
+                    config.autoTranslate = {
+                        enabled: false,
+                        targetLang: "en",
+                        threshold: 0.3,
+                        showInChat: true,
+                        excludeCommands: true
+                    };
+                    saveConfig();
+                }
+                
+                if (config.autoTranslate && config.autoTranslate.showInChat === undefined) {
+                    config.autoTranslate.showInChat = true;
+                    saveConfig();
+                }
             }
         } else {
             FileLib.mkdir("NSTranslate");
@@ -124,6 +211,14 @@ function init() {
     ChatLib.chat(`${PREFIX} &fLoaded! Use &c/translate &fto begin translating.`);
     ChatLib.chat(`${PREFIX} &fUse &c/translate help &ffor more information.`);
     ChatLib.chat(`${PREFIX} &fCreated & Updated by &cNumberSix/LabGeek`);
+    ChatLib.chat(new TextComponent(`${PREFIX} &fWe now have a discord! Click to join!`)
+    .setHoverValue(`Click to join!`)
+    .setClick("open_url", `https://discord.gg/BpVZDwnJUk`));
+    if (config.autoTranslate.enabled) {
+        ChatLib.chat(`${PREFIX} &aAutomatic chat translation is enabled. Use &c/translate auto toggle &ato disable.`);
+    } else {
+        ChatLib.chat(`${PREFIX} &fTry &c/translate auto toggle &fto enable automatic chat translation.`);
+    }
 }
 
 const TRANSLATION_APIS = [
@@ -169,14 +264,58 @@ const TRANSLATION_APIS = [
     }
 ];
 
+function detectLanguage(text) {
+    for (const [lang, pattern] of Object.entries(LANGUAGE_PATTERNS)) {
+        const matches = text.match(pattern);
+        if (matches && matches.length > 0) {
+            if (matches.length / text.length > 0.3) {
+                return lang;
+            }
+        }
+    }
+    
+    for (const dictKey of Object.keys(OFFLINE_DICTIONARY)) {
+        if (dictKey.endsWith('_en')) {
+            const sourceLang = dictKey.split('_')[0];
+            const dict = OFFLINE_DICTIONARY[dictKey];
+            
+            const words = text.toLowerCase().split(/\s+/);
+            const matches = words.filter(word => dict[word] !== undefined);
+            
+            if (matches.length > 0 && matches.length / words.length > 0.3) {
+                return sourceLang;
+            }
+        }
+    }
+    
+    return "en";
+}
+
 function translateOffline(from, to, text) {
     const lowerText = text.toLowerCase();
     const dictionaryKey = `${from}_${to}`;
     
     if (!OFFLINE_DICTIONARY[dictionaryKey]) {
-        ChatLib.chat(`${PREFIX} &cOffline translation not available for ${from} to ${to}`);
-        ChatLib.chat(`${PREFIX} &cAvailable offline pairs: ${Object.keys(OFFLINE_DICTIONARY).join(", ")}`);
-        return null;
+        const reverseKey = `${to}_${from}`;
+        if (!OFFLINE_DICTIONARY[reverseKey]) {
+            return null;
+        }
+        
+        const reverseDict = {};
+        Object.entries(OFFLINE_DICTIONARY[reverseKey]).forEach(([key, value]) => {
+            reverseDict[value.toLowerCase()] = key;
+        });
+        
+        if (reverseDict[lowerText]) {
+            return reverseDict[lowerText];
+        }
+        
+        const words = lowerText.split(/\s+/);
+        const translated = words.map(word => {
+            return reverseDict[word] || word;
+        });
+        
+        return translated.join(" ");
     }
     
     if (OFFLINE_DICTIONARY[dictionaryKey][lowerText]) {
@@ -236,34 +375,77 @@ function makeHttpRequest(requestConfig, callback) {
     }).start();
 }
 
-function translateText(from, to, text) {
+const translationCache = new Map();
+let translationIdCounter = 0;
+
+function createCopyableText(text, translatedText) {
+    const translationId = translationIdCounter++;
+    translationCache.set(translationId.toString(), translatedText);
+    
+    return new TextComponent(text)
+        .setHoverValue("&eClick to copy")
+        .setClick("run_command", `/nstranslatecopy ${translationId}`);
+}
+
+register("command", (idStr) => {
+    try {
+        const translatedText = translationCache.get(idStr);
+        if (!translatedText) {
+            ChatLib.chat(`${PREFIX} &cError: Translation not found in cache.`);
+            return;
+        }
+        
+        const clipboard = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
+        const stringSelection = new java.awt.datatransfer.StringSelection(translatedText);
+        clipboard.setContents(stringSelection, null);
+        ChatLib.chat(`${PREFIX} &aCopied to clipboard!`);
+    } catch (e) {
+        ChatLib.chat(`${PREFIX} &cFailed to copy: ${e.toString()}`);
+    }
+}).setName("nstranslatecopy");
+
+function translateText(from, to, text, quiet = false) {
     config.lastUsed.from = from;
     config.lastUsed.to = to;
     saveConfig();
     
     if (config.offlineMode) {
-        ChatLib.chat(`${PREFIX} &fTranslating &f(${LANGUAGES[from] || from} → ${LANGUAGES[to] || to})`);
+        if (!quiet) ChatLib.chat(`${PREFIX} &fTranslating &f(${LANGUAGES[from] || from} → ${LANGUAGES[to] || to})`);
         const translatedText = translateOffline(from, to, text);
         
         if (translatedText) {
             if (config.showOriginal) {
-                ChatLib.chat(`${PREFIX} &f${text} &8→ &f${translatedText} &f(offline)`);
+                return {
+                    success: true,
+                    component: createCopyableText(`${PREFIX} &f${text} &8→ &f${translatedText} &f(offline)`, translatedText),
+                    text: translatedText
+                };
             } else {
-                ChatLib.chat(`${PREFIX} &f${translatedText} &f(offline)`);
+                return {
+                    success: true,
+                    component: createCopyableText(`${PREFIX} &f${translatedText} &f(offline)`, translatedText),
+                    text: translatedText
+                };
             }
         } else {
-            ChatLib.chat(`${PREFIX} &cCouldn't translate text offline. Try with simpler phrases or common words.`);
+            if (!quiet) ChatLib.chat(`${PREFIX} &cCouldn't translate text offline. Try with simpler phrases or common words.`);
+            return { success: false };
         }
-        return;
     }
     
-    ChatLib.chat(`${PREFIX} &cTranslating &f(${LANGUAGES[from] || from} → ${LANGUAGES[to] || to})`);
-    tryTranslationAPI(0, from, to, text);
+    if (!quiet) ChatLib.chat(`${PREFIX} &cTranslating &f(${LANGUAGES[from] || from} → ${LANGUAGES[to] || to})`);
+    tryTranslationAPI(0, from, to, text, quiet);
+    
+    return { 
+        success: true, 
+        pending: true,
+        text: "Translation pending..." 
+    };
 }
 
-function tryTranslationAPI(apiIndex, from, to, text) {
+function tryTranslationAPI(apiIndex, from, to, text, quiet = false) {
     if (apiIndex >= TRANSLATION_APIS.length) {
-        ChatLib.chat(`${PREFIX} &cAll translation APIs failed. Try &c/translate toggle offline&c.`);
+        if (!quiet) ChatLib.chat(`${PREFIX} &cAll translation APIs failed. Try &c/translate toggle offline&c.`);
         return;
     }
     
@@ -272,8 +454,8 @@ function tryTranslationAPI(apiIndex, from, to, text) {
     
     makeHttpRequest(requestConfig, (error, responseCode, data) => {
         if (error) {
-            ChatLib.chat(`${PREFIX} &fAPI ${apiIndex + 1} (${api.name}) failed: ${error}`);
-            tryTranslationAPI(apiIndex + 1, from, to, text);
+            if (!quiet) ChatLib.chat(`${PREFIX} &fAPI ${apiIndex + 1} (${api.name}) failed: ${error}`);
+            tryTranslationAPI(apiIndex + 1, from, to, text, quiet);
             return;
         }
         
@@ -281,16 +463,127 @@ function tryTranslationAPI(apiIndex, from, to, text) {
             const translatedText = api.parseResponse(data);
             
             if (config.showOriginal) {
-                ChatLib.chat(`${PREFIX} &c${text} &8→ &f${translatedText}`);
+                const component = createCopyableText(`${PREFIX} &c${text} &8→ &f${translatedText}`, translatedText);
+                if (!quiet) ChatLib.chat(component);
+                return component;
             } else {
-                ChatLib.chat(`${PREFIX} &f${translatedText}`);
+                const component = createCopyableText(`${PREFIX} &f${translatedText}`, translatedText);
+                if (!quiet) ChatLib.chat(component);
+                return component;
             }
         } catch (e) {
-            ChatLib.chat(`${PREFIX} &fAPI ${apiIndex + 1} (${api.name}) error: ${e.message}`);
-            tryTranslationAPI(apiIndex + 1, from, to, text);
+            if (!quiet) ChatLib.chat(`${PREFIX} &fAPI ${apiIndex + 1} (${api.name}) error: ${e.message}`);
+            tryTranslationAPI(apiIndex + 1, from, to, text, quiet);
         }
     });
 }
+
+function isHostReachable(hostname) {
+    try {
+        const address = java.net.InetAddress.getByName(hostname);
+        return address.isReachable(3000);
+    } catch (e) {
+        return false;
+    }
+}
+
+register("chat", (message, event) => {
+    if (!config.autoTranslate.enabled) return;
+    
+    const rawMessage = ChatLib.removeFormatting(message);
+    
+    if (config.autoTranslate.excludeCommands && rawMessage.startsWith("/")) return;
+    
+    let content = rawMessage;
+    const colonIndex = rawMessage.indexOf(": ");
+    
+    if (colonIndex !== -1) {
+        content = rawMessage.substring(colonIndex + 2);
+    }
+    
+    if (!content.trim()) return;
+    
+    const detectedLang = detectLanguage(content);
+    
+    if (detectedLang === config.autoTranslate.targetLang) return;
+    
+    let shouldTranslate = false;
+    
+    if (Object.keys(LANGUAGE_PATTERNS).includes(detectedLang)) {
+        shouldTranslate = true;
+    } 
+    else if (detectedLang !== config.autoTranslate.targetLang) {
+        if (config.autoTranslate.targetLang !== "en" && detectedLang === "en") {
+            shouldTranslate = true;
+        }
+        else if (config.autoTranslate.targetLang === "en" && detectedLang !== "en") {
+            shouldTranslate = true;
+        }
+    }
+    
+    if (shouldTranslate) {
+        ChatLib.chat(`${PREFIX} &7Auto-translating from ${LANGUAGES[detectedLang] || detectedLang}...`);
+        
+        if (config.offlineMode) {
+            const translatedText = translateOffline(detectedLang, config.autoTranslate.targetLang, content);
+            
+            if (translatedText && config.autoTranslate.showInChat) {
+                const component = config.showOriginal 
+                    ? createCopyableText(`${PREFIX} &f${content} &8→ &f${translatedText} &f(offline)`, translatedText)
+                    : createCopyableText(`${PREFIX} &f${translatedText} &f(offline)`, translatedText);
+                ChatLib.chat(component);
+            } else if (!translatedText) {
+                ChatLib.chat(`${PREFIX} &cCouldn't translate text offline. Try with simpler phrases.`);
+            }
+        } else {
+            const api = TRANSLATION_APIS[0];
+            const requestConfig = api.makeRequest(detectedLang, config.autoTranslate.targetLang, content);
+            
+            makeHttpRequest(requestConfig, (error, responseCode, data) => {
+                if (error) {
+                    if (TRANSLATION_APIS.length > 1) {
+                        const nextApi = TRANSLATION_APIS[1];
+                        const nextRequestConfig = nextApi.makeRequest(detectedLang, config.autoTranslate.targetLang, content);
+                        
+                        makeHttpRequest(nextRequestConfig, (error2, responseCode2, data2) => {
+                            if (error2) {
+                                ChatLib.chat(`${PREFIX} &cFailed to auto-translate. Check your connection.`);
+                                return;
+                            }
+                            
+                            try {
+                                const translatedText = nextApi.parseResponse(data2);
+                                if (config.autoTranslate.showInChat) {
+                                    const component = config.showOriginal
+                                        ? createCopyableText(`${PREFIX} &c${content} &8→ &f${translatedText}`, translatedText)
+                                        : createCopyableText(`${PREFIX} &f${translatedText}`, translatedText);
+                                    ChatLib.chat(component);
+                                }
+                            } catch (e) {
+                                ChatLib.chat(`${PREFIX} &cAuto-translation failed: ${e.message}`);
+                            }
+                        });
+                    } else {
+                        ChatLib.chat(`${PREFIX} &cFailed to auto-translate. Check your connection.`);
+                    }
+                    return;
+                }
+                
+                try {
+                    const translatedText = api.parseResponse(data);
+                    if (config.autoTranslate.showInChat) {
+                        const component = config.showOriginal
+                            ? createCopyableText(`${PREFIX} &c${content} &8→ &f${translatedText}`, translatedText)
+                            : createCopyableText(`${PREFIX} &f${translatedText}`, translatedText);
+                        ChatLib.chat(component);
+                    }
+                } catch (e) {
+                    ChatLib.chat(`${PREFIX} &cAuto-translation failed: ${e.message}`);
+                }
+            });
+        }
+    }
+}).setCriteria("${message}");
 
 function showHelp() {
     ChatLib.chat(`\n${PREFIX} &fCommands:`);
@@ -300,8 +593,11 @@ function showHelp() {
     ChatLib.chat(`&c/translate set default <from> <to> &f- Set default languages`);
     ChatLib.chat(`&c/translate toggle original &f- Toggle showing original text`);
     ChatLib.chat(`&c/translate toggle offline &f- Toggle offline/online mode`);
+    ChatLib.chat(`&c/translate auto toggle &f- Toggle automatic chat translation`);
+    ChatLib.chat(`&c/translate auto lang <code> &f- Set target language for auto-translation`);
     ChatLib.chat(`&c/translate langs &f- Show available language codes`);
     ChatLib.chat(`&c/translate help &f- Show this help message\n`);
+    ChatLib.chat(`&f(Pro tip: You can click on any translation to copy it to your clipboard!)`);
 }
 
 function showLanguages() {
@@ -380,6 +676,30 @@ register("command", (...args) => {
         return;
     }
     
+    if (args[0] === "auto" && args[1] === "toggle") {
+        config.autoTranslate.enabled = !config.autoTranslate.enabled;
+        ChatLib.chat(`${PREFIX} &fAutomatic chat translation: ${config.autoTranslate.enabled ? "&aEnabled" : "&cDisabled"}`);
+        if (config.autoTranslate.enabled) {
+            ChatLib.chat(`${PREFIX} &fTranslating to: &c${config.autoTranslate.targetLang} &f(${LANGUAGES[config.autoTranslate.targetLang] || config.autoTranslate.targetLang})`);
+            ChatLib.chat(`${PREFIX} &fUse &c/translate auto lang <code> &fto change target language.`);
+        }
+        saveConfig();
+        return;
+    }
+    
+    if (args[0] === "auto" && args[1] === "lang" && args[2]) {
+        const langCode = args[2].toLowerCase();
+        if (!LANGUAGES[langCode]) {
+            ChatLib.chat(`${PREFIX} &cUnknown language code. Use &c/translate langs &cto see available languages.`);
+            return;
+        }
+        
+        config.autoTranslate.targetLang = langCode;
+        ChatLib.chat(`${PREFIX} &fSet auto-translation target language to: &c${langCode} &f(${LANGUAGES[langCode]})`);
+        saveConfig();
+        return;
+    }
+    
     if (args[0] === "set" && args[1] === "default" && args[2] && args[3]) {
         config.defaultFrom = args[2];
         config.defaultTo = args[3];
@@ -394,13 +714,19 @@ register("command", (...args) => {
             return;
         }
         const text = args.slice(1).join(" ");
-        translateText(config.lastUsed.from, config.lastUsed.to, text);
+        const result = translateText(config.lastUsed.from, config.lastUsed.to, text);
+        if (result.success && !result.pending && result.component) {
+            ChatLib.chat(result.component);
+        }
         return;
     }
     
     if (args.length >= 1 && !LANGUAGES[args[0]] && args[0].length !== 2) {
         const text = args.join(" ");
-        translateText(config.defaultFrom, config.defaultTo, text);
+        const result = translateText(config.defaultFrom, config.defaultTo, text);
+        if (result.success && !result.pending && result.component) {
+            ChatLib.chat(result.component);
+        }
         return;
     }
     
@@ -408,7 +734,10 @@ register("command", (...args) => {
         const from = args[0];
         const to = args[1];
         const text = args.slice(2).join(" ");
-        translateText(from, to, text);
+        const result = translateText(from, to, text);
+        if (result.success && !result.pending && result.component) {
+            ChatLib.chat(result.component);
+        }
         return;
     }
     
