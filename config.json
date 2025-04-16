@@ -4,7 +4,22 @@
   "showOriginal": true,
   "lastUsed": {
     "from": "en",
-    "to": "el"
+    "to": "es"
   },
-  "offlineMode": false
+  "offlineMode": false,
+  "autoTranslate": {
+    "enabled": true,
+    "targetLang": "en",
+    "threshold": 0.3,
+    "showInChat": true,
+    "excludeCommands": true
+  },
+  "updateChecker": {
+    "enabled": true,
+    "autoCheck": true,
+    "lastCheckedTimestamp": 1744811108643,
+    "checkInterval": 43200000,
+    "lastVersion": "1.0.0",
+    "latestVersion": "1.0.1"
+  }
 }

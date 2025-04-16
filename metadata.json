@@ -1,7 +1,7 @@
 {
     "name": "NSTranslate",
     "description": "A translator for all of your bilingual short comings!",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "author": "NumberSix/LabGeek",
     "entry": "translate.js"
 }
